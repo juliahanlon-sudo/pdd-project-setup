@@ -1,16 +1,12 @@
 {
   "project_types": {
-    "new_construction": {
+    "GOE": {
       "drive_template_id": "PLACEHOLDER_UPDATE_ME",
-      "description": "New construction projects"
+      "description": "GOE (Growth, Optimization, Expansion) projects"
     },
-    "renovation": {
+    "OPS": {
       "drive_template_id": "PLACEHOLDER_UPDATE_ME",
-      "description": "Renovation and refresh projects"
-    },
-    "fitout": {
-      "drive_template_id": "PLACEHOLDER_UPDATE_ME",
-      "description": "Tenant improvement and fit-out projects"
+      "description": "OPS (Operations) projects"
     }
   },
   "tier_channels": {
