@@ -1,6 +1,6 @@
 ---
 name: pdd-project-setup
-description: Automate PDD project setup by creating Slack channels (tier-based) and copying Google Drive folder templates. Asks for region, building code, BudgetForce record ID, tier, and project type.
+description: Automate PDD project setup by creating Slack channels (tier-based) and copying Google Drive folder templates. Asks for region, city, building code, BudgetForce record ID, tier, and project type.
 ---
 
 # PDD Project Setup
@@ -15,10 +15,14 @@ Automate project setup by creating standardized Slack channels and Google Drive 
    ```
 2. Parse the JSON to get:
    - `project_types{}` — mapping of project type to Drive template folder ID
+   - `restricted_template_id` — ID of the Restricted folder template
+   - `region_drives{}` — mapping of region to shared drive ID
    - `tier_channels{}` — additional channels per tier (beyond the 3 base channels)
    - `regions[]` — valid region options
 
 If the config file is missing or malformed, stop and tell the user to check the installation.
+
+If any `region_drives` values are still `PLACEHOLDER_UPDATE_ME`, warn the user that Drive folder creation will be skipped for those regions.
 
 ## Phase 1 — Intake
 
@@ -27,19 +31,21 @@ Ask **all questions in a single `AskUserQuestion` batch**:
 | # | Field | Question | Options |
 |---|---|---|---|
 | 1 | **Region** | "Which region is this project in?" | AMER, EMEA, JAPAC, LATAM, India |
-| 2 | **Building Code** | "What is the building code? (e.g., NYC01, SFO02)" | Text input |
-| 3 | **BudgetForce Record** | "What is the BudgetForce record ID?" | Text input |
-| 4 | **Tier** | "What tier is this project?" | 1, 2, 3, 4, 5 |
-| 5 | **Project Type** | "What type of project is this?" | Options from config `project_types` |
+| 2 | **City** | "What city is this project in? (e.g., New York, San Francisco, London)" | Text input |
+| 3 | **Building Code** | "What is the building code? (e.g., NYC01, SFO02)" | Text input |
+| 4 | **BudgetForce Record** | "What is the BudgetForce record name/ID?" | Text input |
+| 5 | **Tier** | "What tier is this project?" | 1, 2, 3, 4, 5 |
+| 6 | **Project Type** | "What type of project is this?" | Options from config `project_types` |
 
 Parse all answers before proceeding.
 
 **Normalization:**
-- Region: lowercase (e.g., `amer`, `emea`, `japac`, `latam`, `india`)
-- Building Code: lowercase
-- BudgetForce Record: lowercase, spaces replaced with hyphens
+- Region: uppercase for display (e.g., `AMER`, `EMEA`), lowercase for channel names
+- City: Title case for display (e.g., `New York`, `San Francisco`)
+- Building Code: uppercase for display, lowercase for channel names
+- BudgetForce Record: preserve original case for display, lowercase + hyphenate for channel names
 
-**Exit:** `{region, building_code, budgetforce_record, tier, project_type, drive_template_id}`
+**Exit:** `{region, city, building_code, budgetforce_record, tier, project_type, drive_template_id, region_drive_id}`
 
 ## Phase 2 — Channel Planning
 
@@ -93,25 +99,97 @@ Run all channel creations in parallel.
 
 **Exit:** `created_channels[]` with `{name, channel_id}` for each
 
-## Phase 4 — Copy Google Drive Template
+## Phase 4 — Create Google Drive Folder Structure
 
-1. Get the Drive template folder ID from `drive_template_id` (from config based on project type).
+Skip this phase if the region's drive ID is still `PLACEHOLDER_UPDATE_ME` in the config.
 
-2. Copy the template folder:
-   ```
-   copy_drive_file(file_id=<drive_template_id>, new_name="[Project] {region}-{building_code}-{budgetforce_record}")
-   ```
-   Note: If the API doesn't support folder copying, fall back to:
-   - Create a new folder: `create_drive_folder(folder_name="[Project] {region}-{building_code}-{budgetforce_record}")`
-   - List items in template: `list_drive_items(folder_id=<drive_template_id>)`
-   - Copy each item into the new folder
+**Target structure:**
+```
+[Region Shared Drive]
+└── [City Name]  <-- Check if exists, create if not
+    └── [City], [Building Code], [BudgetForce Record Name]  <-- Create this
+        ├── Non Restricted  <-- Copy GOE or OPS template here
+        └── Restricted  <-- Copy Restricted template here
+```
 
-3. Get the shareable link:
+### Step 4.1 — Find or create City folder
+
+1. List all folders in the region's shared drive root:
    ```
-   get_drive_shareable_link(file_id=<new_folder_id>)
+   list_drive_items(folder_id=<region_drive_id>, drive_id=<region_drive_id>, file_type="folder")
    ```
 
-**Exit:** `{drive_folder_id, drive_folder_link}`
+2. Search for a folder matching the city name (case-insensitive match).
+
+3. If not found, create it:
+   ```
+   create_drive_folder(folder_name=<city_name>, parent_folder_id=<region_drive_id>)
+   ```
+
+**Exit:** `city_folder_id`
+
+### Step 4.2 — Create project folder
+
+Inside the city folder, create the project folder:
+```
+folder_name = "{City}, {Building Code}, {BudgetForce Record Name}"
+create_drive_folder(folder_name=<folder_name>, parent_folder_id=<city_folder_id>)
+```
+
+**Exit:** `project_folder_id`
+
+### Step 4.3 — Copy Non Restricted template
+
+1. Create "Non Restricted" folder inside project folder:
+   ```
+   create_drive_folder(folder_name="Non Restricted", parent_folder_id=<project_folder_id>)
+   ```
+
+2. Get the template ID based on project type (GOE or OPS) from config.
+
+3. List all items in the template folder:
+   ```
+   list_drive_items(folder_id=<drive_template_id>)
+   ```
+
+4. Copy each item (files and subfolders) into the "Non Restricted" folder:
+   ```
+   copy_drive_file(file_id=<item_id>, parent_folder_id=<non_restricted_folder_id>, new_name=<item_name>)
+   ```
+   Run all copies in parallel.
+
+**Exit:** `non_restricted_folder_id`
+
+### Step 4.4 — Copy Restricted template
+
+1. Create "Restricted" folder inside project folder:
+   ```
+   create_drive_folder(folder_name="Restricted", parent_folder_id=<project_folder_id>)
+   ```
+
+2. Get the Restricted template ID from config (`restricted_template_id`).
+
+3. List all items in the Restricted template folder:
+   ```
+   list_drive_items(folder_id=<restricted_template_id>)
+   ```
+
+4. Copy each item into the "Restricted" folder:
+   ```
+   copy_drive_file(file_id=<item_id>, parent_folder_id=<restricted_folder_id>, new_name=<item_name>)
+   ```
+   Run all copies in parallel.
+
+**Exit:** `restricted_folder_id`
+
+### Step 4.5 — Get shareable link
+
+Get the link to the main project folder:
+```
+get_drive_shareable_link(file_id=<project_folder_id>)
+```
+
+**Exit:** `{project_folder_id, project_folder_link}`
 
 ## Phase 5 — Post Welcome Messages
 
@@ -122,16 +200,17 @@ For each created channel, post a welcome message with:
 
 Example message:
 ```markdown
-**Welcome to the [Region] [Building Code] Project Channel!**
+**Welcome to the {City} {Building Code} Project Channel!**
 
 📋 **Project Details:**
 - Region: {region}
+- City: {city}
 - Building: {building_code}
 - BudgetForce Record: {budgetforce_record}
 - Tier: {tier}
 - Project Type: {project_type}
 
-📁 **Google Drive Folder:** {drive_folder_link}
+📁 **Google Drive Folder:** {project_folder_link}
 
 This channel was auto-created by the PDD Project Setup skill.
 ```
@@ -146,34 +225,45 @@ Print a completion summary:
 ```
 ✅ PDD Project Setup Complete
 
+Project: {City}, {Building Code}, {BudgetForce Record}
+Region: {Region} | Tier: {Tier} | Type: {Project Type}
+
 Slack Channels Created:
   ✓ int-proj-amer-nyc01-bf-2026-q3-nyc → https://salesforce.slack.com/archives/C...
   ✓ proj-amer-nyc01-acct-bf-2026-q3-nyc → https://salesforce.slack.com/archives/C...
+  [+ any tier-specific channels]
 
 Manual Creation Required (External Workspace):
   ⚠ ext-proj-amer-nyc01-bf-2026-q3-nyc
     Instructions: Go to Salesforce External Slack, create channel with this exact name
 
-Google Drive Folder:
-  📁 {drive_folder_link}
+Google Drive Folder Structure Created:
+  📁 {City}/{City, Building Code, BudgetForce Record}/
+     ├── Non Restricted (GOE/OPS template copied)
+     └── Restricted (template copied)
+  🔗 {project_folder_link}
 
 Next Steps:
-  1. Create the external channel manually
+  1. Create the external channel manually in Salesforce External Slack
   2. Add team members to all channels
   3. Pin important links in each channel
+  4. Review and customize the Drive folder structure
 ```
 
 ## Do / Don't
 
 **Do**
 - Always load fresh config from the templates.json file — never use hardcoded values.
-- Normalize all input to lowercase and replace spaces with hyphens for channel names.
+- Normalize input appropriately: lowercase + hyphens for channel names, preserve case for display and folder names.
 - Show the full channel plan and get approval before creating anything.
-- Run channel creation and message posting in parallel for speed.
+- Check if the city folder already exists before creating a new one (case-insensitive match).
+- Run channel creation, folder copying, and message posting in parallel for speed.
+- Copy all items from templates (files and subfolders) recursively.
 - Provide clear instructions for manual external channel creation.
 
 **Don't**
 - Don't create channels until the user approves the plan.
-- Don't fail silently if a channel already exists — log it and continue.
+- Don't fail silently if a channel or folder already exists — log it and continue.
 - Don't attempt to create channels in the external workspace via MCP.
 - Don't skip the welcome messages — they provide context for new team members.
+- Don't create duplicate city folders — always search first.

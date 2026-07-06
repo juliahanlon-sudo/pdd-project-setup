@@ -1,13 +1,21 @@
 {
   "project_types": {
     "GOE": {
-      "drive_template_id": "PLACEHOLDER_UPDATE_ME",
+      "drive_template_id": "1oBmUFDMqIzuU_1ALoQqGO-5Y-oG7oldZ",
       "description": "GOE (Growth, Optimization, Expansion) projects"
     },
     "OPS": {
-      "drive_template_id": "PLACEHOLDER_UPDATE_ME",
+      "drive_template_id": "1_yf0dZ6P6GR7-TKqwsiFCkHtujUeVild",
       "description": "OPS (Operations) projects"
     }
+  },
+  "restricted_template_id": "1Na5UZfqY0_HcqXSnRtePcmAEtik5CuIT",
+  "region_drives": {
+    "AMER": "PLACEHOLDER_UPDATE_ME",
+    "EMEA": "PLACEHOLDER_UPDATE_ME",
+    "JAPAC": "PLACEHOLDER_UPDATE_ME",
+    "LATAM": "PLACEHOLDER_UPDATE_ME",
+    "India": "PLACEHOLDER_UPDATE_ME"
   },
   "tier_channels": {
     "1": [],
