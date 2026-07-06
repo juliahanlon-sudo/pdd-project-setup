@@ -1,0 +1,24 @@
+{
+  "project_types": {
+    "new_construction": {
+      "drive_template_id": "PLACEHOLDER_UPDATE_ME",
+      "description": "New construction projects"
+    },
+    "renovation": {
+      "drive_template_id": "PLACEHOLDER_UPDATE_ME",
+      "description": "Renovation and refresh projects"
+    },
+    "fitout": {
+      "drive_template_id": "PLACEHOLDER_UPDATE_ME",
+      "description": "Tenant improvement and fit-out projects"
+    }
+  },
+  "tier_channels": {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "5": []
+  },
+  "regions": ["AMER", "EMEA", "JAPAC", "LATAM", "India"]
+}
